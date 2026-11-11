@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Absen Scan Kartu</title>
+<style>
+:root{
+  --bg:#f3f5f2; --surface:#ffffff; --ink:#16231b; --muted:#5b6b61; --line:#d9e0da;
+  --ok:#1f8a4c; --ok-bg:#dff3e7; --dup:#a86a00; --dup-bg:#fdecc8; --err:#b3261e; --err-bg:#fadbd8;
+  --idle-bg:#e8ece9; --accent:#0f4c3a;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f1713; --surface:#18231d; --ink:#e8f0ea; --muted:#9db0a4; --line:#2a3a31;
+    --ok:#5fd38d; --ok-bg:#16402a; --dup:#f0b44c; --dup-bg:#47340e; --err:#ff8a80; --err-bg:#4a1d19;
+    --idle-bg:#1f2c25; --accent:#5fd38d;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+.wrap{max-width:760px;margin:0 auto;padding:14px}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+h1{font-size:1.25rem;margin:0}
+.count{font-variant-numeric:tabular-nums;font-weight:700;color:var(--accent)}
+.cam{position:relative;background:#000;border-radius:14px;overflow:hidden;min-height:240px}
+#reader{width:100%}
+#reader video{width:100%!important;display:block}
+.cam .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9fb;padding:20px;text-align:center}
+#status{margin:12px 0;border-radius:14px;padding:16px;background:var(--idle-bg);min-height:92px;
+  display:flex;flex-direction:column;justify-content:center;transition:background .15s}
+#status .t{font-size:1.5rem;font-weight:700;line-height:1.2}
+#status .s{color:var(--muted);margin-top:2px}
+#status.ok{background:var(--ok-bg)} #status.ok .t{color:var(--ok)}
+#status.dup{background:var(--dup-bg)} #status.dup .t{color:var(--dup)}
+#status.err{background:var(--err-bg)} #status.err .t{color:var(--err)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;cursor:pointer;background:var(--accent);color:#fff}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) button{color:#0f1713}}
+button.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 14px;margin:12px 0}
+summary{cursor:pointer;font-weight:600}
+label{display:block;margin-top:10px;font-weight:600;font-size:.9rem}
+input{width:100%;font:inherit;padding:10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.hint{color:var(--muted);font-size:.85rem;margin:4px 0 0}
+ul{list-style:none;margin:8px 0 0;padding:0}
+li{display:flex;justify-content:space-between;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line)}
+li .n{font-weight:600} li .m{color:var(--muted);font-size:.85rem;font-variant-numeric:tabular-nums}
+li.dup .n{color:var(--dup)} li.pend .m::after{content:" • menunggu kirim"}
+.pill{font-size:.8rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.pill.off{color:var(--err);border-color:var(--err)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Absen Scan Kartu</h1>
+    <div><span class="pill" id="net">online</span> &nbsp; Hadir: <span class="count" id="count">0</span></div>
+  </header>
+
+  <div class="cam">
+    <div id="reader"></div>
+    <div class="ph" id="ph">Tekan Mulai kamera untuk memulai</div>
+  </div>
+
+  <div id="status" role="status" aria-live="polite">
+    <div class="t">Siap memindai</div>
+    <div class="s">Arahkan barcode kartu siswa ke kamera</div>
+  </div>
+
+  <div class="row">
+    <button id="btnStart">Mulai kamera</button>
+    <button id="btnStop" class="sec" hidden>Hentikan kamera</button>
+    <button id="btnFlip" class="sec" hidden>Ganti kamera</button>
+  </div>
+
+  <details id="set">
+    <summary>Pengaturan</summary>
+    <label for="url">URL Google Apps Script (Web app)</label>
+    <input id="url" type="url" placeholder="https://script.google.com/macros/s/AKfycbzCEPMkAWERyOb9slQSxV95vLQ7i8xk9tW2XQHypnIep2Isud0rbrRfM5pHH4H2Pw27Fw/exec" autocomplete="off">
+    <label for="kelas">Kelas (opsional, dicatat jika kode tidak ada di sheet Siswa)</label>
+    <input id="kelas" type="text" placeholder="contoh: X IPA 1" autocomplete="off">
+    <p class="hint">Pengaturan tersimpan di perangkat ini. Scan yang gagal terkirim akan dicoba ulang otomatis.</p>
+    <div class="row" style="margin-top:10px"><button id="btnSave">Simpan</button></div>
+  </details>
+
+  <h2 style="font-size:1rem;margin:16px 0 0">Scan terakhir</h2>
+  <ul id="list"></ul>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const LS = {
+    get(k, d){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v);}catch(e){return d;} },
+    set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+  };
+  const today = () => { const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); };
+
+  let cfg = LS.get('abs_cfg', {url:'', kelas:''});
+  let queue = LS.get('abs_queue', []);                 // belum terkirim
+  let seen = LS.get('abs_seen', {day:today(), codes:{}}); // sudah dipindai hari ini
+  if (seen.day !== today()) seen = {day:today(), codes:{}};
+  let recent = [];       // daftar tampilan
+  let lastCode = '', lastAt = 0;
+  let scanner = null, camIdx = 0, cams = [], sending = false, wake = null;
+
+  $('url').value = cfg.url; $('kelas').value = cfg.kelas;
+  if (!cfg.url) $('set').open = true;
+  updateCount();
+
+  // ---------- suara & status ----------
+  let actx;
+  function beep(freq, dur){
+    try{
+      actx = actx || new (window.AudioContext||window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.frequency.value = freq; g.gain.value = .15; o.connect(g); g.connect(actx.destination);
+      o.start(); o.stop(actx.currentTime + dur);
+    }catch(e){}
+  }
+  let clearT;
+  function show(kind, title, sub){
+    const s = $('status'); s.className = kind;
+    s.innerHTML = '<div class="t"></div><div class="s"></div>';
+    s.children[0].textContent = title; s.children[1].textContent = sub || '';
+    clearTimeout(clearT);
+    clearT = setTimeout(()=>{ s.className=''; s.innerHTML='<div class="t">Siap memindai</div><div class="s">Arahkan barcode kartu siswa ke kamera</div>'; }, 2500);
+  }
+  function updateCount(){ $('count').textContent = Object.keys(seen.codes).length; }
+  function saveState(){ LS.set('abs_queue', queue); LS.set('abs_seen', seen); }
+
+  function render(){
+    const ul = $('list'); ul.innerHTML = '';
+    recent.slice(0, 15).forEach(r=>{
+      const li = document.createElement('li');
+      li.className = (r.dup ? 'dup ' : '') + (r.pending ? 'pend' : '');
+      const a = document.createElement('span'); a.className='n'; a.textContent = r.nama || r.code;
+      const b = document.createElement('span'); b.className='m'; b.textContent = r.time + (r.dup ? ' (sudah absen)' : '');
+      li.append(a,b); ul.append(li);
+    });
+  }
+
+  // ---------- proses scan ----------
+  function onScan(text){
+    const code = String(text).trim();
+    if (!code) return;
+    const now = Date.now();
+    if (code === lastCode && now - lastAt < 3000) { lastAt = now; return; } // kartu masih di depan kamera
+    lastCode = code; lastAt = now;
+
+    const time = new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+    if (seen.day !== today()) seen = {day:today(), codes:{}};
+
+    if (seen.codes[code]) {
+      beep(300, .25);
+      show('dup', seen.codes[code].nama || code, 'Sudah tercatat hari ini');
+      recent.unshift({code, nama: seen.codes[code].nama, time, dup:true}); render();
+      return;
+    }
+    const item = {code, ts: now, kelas: cfg.kelas};
+    seen.codes[code] = {nama:''};
+    const rec = {code, nama:'', time, pending:true};
+    recent.unshift(rec);
+    queue.push(item); saveState(); updateCount();
+    beep(1000, .12);
+    show('ok', 'Terekam', code);
+    item._rec = rec;
+    render(); flush();
+  }
+
+  // ---------- kirim ke Google Sheet ----------
+  async function flush(){
+    if (sending || !cfg.url) { if(!cfg.url && queue.length) show('err','URL belum diatur','Buka Pengaturan lalu isi URL Apps Script'); return; }
+    sending = true;
+    try{
+      while (queue.length){
+        const it = queue[0];
+        const res = await fetch(cfg.url, {
+          method:'POST',
+          headers:{'Content-Type':'text/plain;charset=utf-8'},
+          body: JSON.stringify({code: it.code, ts: it.ts, kelas: it.kelas})
+        });
+        const j = await res.json();
+        if (!j.ok) throw new Error(j.error || 'Gagal');
+        queue.shift();
+        if (seen.codes[it.code]) seen.codes[it.code].nama = j.nama || '';
+        const r = recent.find(x => x.code === it.code && x.pending);
+        if (r){ r.pending = false; r.nama = j.nama || ''; }
+        saveState(); render();
+        if (j.nama) show('ok', j.nama, 'Hadir tercatat');
+        else if (!j.dup) show('ok', it.code, 'Tercatat (kode belum ada di sheet Siswa)');
+      }
+      setNet(true);
+    }catch(e){
+      setNet(false);
+      setTimeout(flush, 8000);
+    }finally{ sending = false; }
+  }
+  function setNet(ok){ const n=$('net'); n.textContent = ok ? 'terkirim' : (queue.length+' antre'); n.className = 'pill'+(ok?'':' off'); }
+  window.addEventListener('online', flush);
+  if (queue.length) { setNet(false); flush(); }
+
+  // ---------- kamera ----------
+  async function startCam(){
+    if (!window.Html5Qrcode) { show('err','Library scanner gagal dimuat','Periksa koneksi internet lalu muat ulang'); return; }
+    try{
+      if (!cams.length) cams = await Html5Qrcode.getCameras();
+      if (!scanner) scanner = new Html5Qrcode('reader', {
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.CODABAR, Html5QrcodeSupportedFormats.QR_CODE
+        ],
+        useBarCodeDetectorIfSupported: true, verbose:false
+      });
+      const source = cams.length > 1 && camIdx ? cams[camIdx % cams.length].id : {facingMode:'environment'};
+      await scanner.start(source,
+        { fps: 15, qrbox: (w,h)=>({width:Math.floor(w*.85), height:Math.floor(Math.min(h*.6, w*.45))}) },
+        onScan, ()=>{});
+      $('ph').hidden = true; $('btnStart').hidden = true; $('btnStop').hidden = false; $('btnFlip').hidden = cams.length < 2;
+      try{ wake = await navigator.wakeLock.request('screen'); }catch(e){}
+    }catch(e){
+      show('err','Kamera tidak bisa dibuka','Izinkan akses kamera dan pastikan halaman memakai HTTPS');
+    }
+  }
+  async function stopCam(){
+    try{ if (scanner && scanner.isScanning) await scanner.stop(); }catch(e){}
+    try{ if (wake) wake.release(); }catch(e){}
+    $('ph').hidden = false; $('btnStart').hidden = false; $('btnStop').hidden = true; $('btnFlip').hidden = true;
+  }
+  $('btnStart').onclick = startCam;
+  $('btnStop').onclick = stopCam;
+  $('btnFlip').onclick = async ()=>{ camIdx++; await stopCam(); await startCam(); };
+  document.addEventListener('visibilitychange', async ()=>{
+    if (document.visibilityState==='visible' && scanner && scanner.isScanning){ try{ wake = await navigator.wakeLock.request('screen'); }catch(e){} }
+  });
+
+  $('btnSave').onclick = ()=>{
+    cfg = {url: $('url').value.trim(), kelas: $('kelas').value.trim()};
+    LS.set('abs_cfg', cfg); $('set').open = false;
+    show('ok','Pengaturan disimpan',''); flush();
+  };
+})();
+</script>
+</body>
+</html>
